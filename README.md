@@ -1,0 +1,1 @@
+A simple AI model built from scratch that can differentiate between people and horses.
