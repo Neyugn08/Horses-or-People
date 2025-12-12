@@ -23,7 +23,9 @@ def retrieve_data():
                 cnt += 1
                 # Convert img into np arr
                 img_path = os.path.join(more_new_path, img)
-                processed_img = cv2.imread(img_path) / 255.0
+                img = cv2.imread(img_path)
+                img = cv2.resize(img, (150, 150))
+                processed_img = img / 255.0
 
                 # Add the correponsding labels for imgs
                 if sub_dir == "horses":
@@ -46,6 +48,7 @@ def retrieve_data():
     m = training_set_imgs.shape[0]
     n0 = training_set_imgs.reshape(m, -1).shape[1]
     print("Finished uploading")
+
     return n0, training_set_imgs, training_set_labels, validation_set_imgs, validation_set_labels     
 
 
@@ -68,13 +71,13 @@ def multilayers_NN(L, L_structure, n, learning_rate, train_imgs, train_labels, v
     # Check the accuracy of the model
     T = train_imgs.shape[0]
     tmp, rand = forward_prop(W, b, L, train_imgs.reshape(T, -1).T)
-    res = np.where(tmp[L] > 0.5, 1, 0) - train_labels
+    res = np.where(tmp[L] > 0.5, 1, 0) - train_labels.reshape(1, T)
     percent = np.count_nonzero(res == 0) / T * 100
     print(f"Accuracy for training set: {percent}")
 
     M = valid_imgs.shape[0]
     tmp, rand = forward_prop(W, b, L, valid_imgs.reshape(M, -1).T)
-    res = np.where(tmp[L] > 0.5, 1, 0) - valid_labels
+    res = np.where(tmp[L] > 0.5, 1, 0) - valid_labels.reshape(1, M)
     percent = np.count_nonzero(res == 0) / M * 100
     print(f"Accuracy for dev set: {percent}")
 
@@ -84,20 +87,27 @@ def random_initialize(L, L_structure):
     b = [None, ]
     # L_structure: an array of number of nodes in each layer from 0 to L - 1
     for i in range(1, L + 1):
-        Wi = np.random.randn(L_structure[i], L_structure[i - 1]) * 0.01
+        # Wi = np.random.randn(L_structure[i], L_structure[i - 1]) * 0.01
+        # He initialisation
+        Wi = np.random.randn(L_structure[i], L_structure[i - 1]) * np.sqrt(2 / L_structure[i - 1])
         W.append(Wi)
         bi = np.zeros((L_structure[i], 1))
         b.append(bi)
     return W, b
 
 
-def relu(X):
-    return np.maximum(0, X)
+# def relu(X):
+    # return np.maximum(0, X)
 
 
-def relu_derivative(X):
-    return np.where(X > 0, 1, 0)
+# def relu_derivative(X):
+    # return np.where(X > 0, 1, 0)
 
+def leaky_relu(x):
+    return np.where(x > 0, x, 0.01*x)
+
+def leaky_relu_derivative(x):
+    return np.where(x > 0, 1, 0.01)
 
 def sigmoid(X):
     return 1 / (1 +  np.exp(-X))
@@ -113,11 +123,11 @@ def forward_prop(W, b, L, input):
     Z = [None, ]
     # Add A1 with this shape: (n1, m)
     Z.append(np.dot(W[1], input) + b[1])
-    A.append(relu(Z[1]))
+    A.append(leaky_relu(Z[1]))
 
     for i in range (2, L):
         Z.append(np.dot(W[i], A[i - 1]) + b[i])
-        A.append(relu(Z[i]))
+        A.append(leaky_relu(Z[i]))
 
     Z.append(np.dot(W[L], A[L - 1]) + b[L])
     A.append(sigmoid(Z[L]))
@@ -125,15 +135,17 @@ def forward_prop(W, b, L, input):
 
 
 def back_prop(L, W, Z, A, expected_output):
+    # expected_output has size: (1, m)
     m = A[L].shape[1]
     d = {}
-    d[f"A{L}"] = A[L] - expected_output
-    d[f"Z{L}"] = d[f"A{L}"] * sigmoid_derivative(Z[L])
+    # MSE loss: d[f"A{L}"] = A[L] - expected_output; d[f"Z{L}"] = d[f"A{L}"] * sigmoid_derivative(Z[L])
+    # BCE loss:
+    d[f"Z{L}"] = A[L] - expected_output
     d[f"W{L}"] = 1 / m * np.dot(d[f"Z{L}"], A[L - 1].T)
     d[f"b{L}"] = 1 / m * np.sum(d[f"Z{L}"], axis=1, keepdims=True)
     d[f"A{L - 1}"] = np.dot(W[L].T, d[f"Z{L}"])
     for i in range(1, L):
-        d[f"Z{L - i}"] = d[f"A{L - i}"] * relu_derivative(Z[L - i])
+        d[f"Z{L - i}"] = d[f"A{L - i}"] * leaky_relu_derivative(Z[L - i])
         d[f"W{L - i}"] = 1 / m * np.dot(d[f"Z{L - i}"], A[L - i - 1].T)
         d[f"b{L - i}"] = 1 / m * np.sum(d[f"Z{L - i}"], axis=1, keepdims=True)
         d[f"A{L - i - 1}"] = np.dot(W[L - i].T, d[f"Z{L - i}"])
@@ -149,7 +161,7 @@ def update(L, W, b, d, learning_rate):
 
 def main():
     n0, a, b, c, d = retrieve_data()
-    NN = multilayers_NN(5, (n0, 3, 4, 5, 6, 1), 50, 0.01, a, b, c, d)
+    NN = multilayers_NN(5, (n0, 64, 32, 16, 8, 1), 20, 0.001, a, b, c, d)
 
 
 main()
