@@ -1,1 +1,1 @@
-A simple AI model built from scratch that can differentiate between people and horses.
+A simple neural network built from scratch that can differentiate between people and horses with 70 - 80% accuracy.
