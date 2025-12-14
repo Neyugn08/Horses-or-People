@@ -53,7 +53,6 @@ def retrieve_data():
 
 
 def multilayers_NN(L, L_structure, n, learning_rate, train_imgs, train_labels, valid_imgs, valid_labels):
-
     m = train_imgs.shape[0]
     # Initialise weights and biases
     W, b = random_initialize(L, L_structure)
@@ -61,11 +60,22 @@ def multilayers_NN(L, L_structure, n, learning_rate, train_imgs, train_labels, v
     for i in range(0, n):
         # Forward propagation
         A, Z = forward_prop(W, b, L, train_imgs.reshape(m, -1).T)
+        # BCE loss calculation
+        loss = bce_loss(A[L], train_labels.reshape(1, m))
         # Backward propagation
         d = back_prop(L, W, Z, A, train_labels.reshape(1, m))
         # Update weights and biases
         W, b = update(L, W, b, d, learning_rate)
-        print(f"{i + 1}st training")
+        tmp = None
+        if i == 0:
+            tmp = "st"
+        elif i == 1: 
+            tmp = "nd"
+        elif i == 2:
+            tmp = "rd"
+        else:
+            tmp = "th"
+        print(f"{i + 1}{tmp} training. Loss = {loss}")
     print("Finished training")
 
     # Check the accuracy of the model
@@ -117,6 +127,11 @@ def sigmoid_derivative(X):
     return sigmoid(X) * (1 - sigmoid(X))
 
 
+def bce_loss(predicted_values, true_values):
+    # both inputs have size (1, m)
+    m = predicted_values.shape[1]
+    return - 1 / m * (np.dot(true_values, np.log(predicted_values.reshape(m, 1))) + np.dot((1 - true_values), np.log(1 - predicted_values.reshape(m, 1))))
+
 def forward_prop(W, b, L, input):
     # input has this shape: (n0, m)
     A = [input, ]
@@ -161,7 +176,7 @@ def update(L, W, b, d, learning_rate):
 
 def main():
     n0, a, b, c, d = retrieve_data()
-    NN = multilayers_NN(5, (n0, 64, 32, 16, 8, 1), 20, 0.001, a, b, c, d)
+    NN = multilayers_NN(5, (n0, 64, 32, 16, 8, 1), 100, 0.0002, a, b, c, d)
 
 
 main()
