@@ -2,13 +2,25 @@ import os
 import numpy as np
 import cv2
 
+
+def normalize_inputs(inputs):
+    m = inputs.shape[0]
+    inputs = inputs.reshape(m, -1)
+    # inputs now have size (m, number of features)
+    mean_inputs = 1 / m * np.sum(inputs, axis = 0, keepdims = True)
+    inputs = inputs - mean_inputs
+    sd_inputs = 1e-7 + np.sqrt(1 / m * np.sum(inputs * inputs, axis = 0, keepdims = True))
+    inputs = inputs / sd_inputs
+    return inputs.T
+
+
 def retrieve_data():
     # Return training sets and validation sets
     path = os.path.join(os.getcwd(), "horse-or-human")
-    training_set_imgs = []
-    training_set_labels = []
-    validation_set_imgs = []
-    validation_set_labels = []
+    training_imgs = []
+    training_labels = []
+    validation_imgs = []
+    validation_labels = []
     for dir in os.listdir(path=path):
         if dir == "horse-or-human":
             continue
@@ -25,7 +37,6 @@ def retrieve_data():
                 img_path = os.path.join(more_new_path, img)
                 img = cv2.imread(img_path)
                 img = cv2.resize(img, (150, 150))
-                processed_img = img / 255.0
 
                 # Add the correponsding labels for imgs
                 if sub_dir == "horses":
@@ -33,33 +44,37 @@ def retrieve_data():
                 else:
                     label = 1
                 if dir == "train":
-                    training_set_imgs.append(processed_img)
-                    training_set_labels.append(label)
+                    training_imgs.append(img)
+                    training_labels.append(label)
                 elif dir == "validation":
-                    validation_set_imgs.append(processed_img)
-                    validation_set_labels.append(label)
+                    validation_imgs.append(img)
+                    validation_labels.append(label)
 
     # Convert lists to NumPy arrays
-    validation_set_imgs = np.array(validation_set_imgs)
-    validation_set_labels = np.array(validation_set_labels)
-    training_set_imgs = np.array(training_set_imgs)
-    training_set_labels = np.array(training_set_labels)
+    validation_imgs = np.array(validation_imgs)
+    validation_labels = np.array(validation_labels)
+    training_imgs = np.array(training_imgs)
+    training_labels = np.array(training_labels)
 
-    m = training_set_imgs.shape[0]
-    n0 = training_set_imgs.reshape(m, -1).shape[1]
+    m = training_imgs.shape[0]
+    n0 = training_imgs.reshape(m, -1).shape[1]
+
+    # normalising inputs
+    processed_training_imgs = normalize_inputs(training_imgs)
+    processed_validation_imgs = normalize_inputs(validation_imgs)
     print("Finished uploading")
 
-    return n0, training_set_imgs, training_set_labels, validation_set_imgs, validation_set_labels     
+    return n0, processed_training_imgs, training_labels, processed_validation_imgs, validation_labels     
 
 
-def multilayers_NN(L, L_structure, n, learning_rate, train_imgs, train_labels, valid_imgs, valid_labels):
-    m = train_imgs.shape[0]
+def multilayers_NN(L, L_structure, n, learning_rate, processed_train_imgs, train_labels, processed_valid_imgs, valid_labels):
+    m = processed_train_imgs.shape[1]
     # Initialise weights and biases
-    W, b = random_initialize(L, L_structure)
+    W, b = he_initialize(L, L_structure)
     # Repeat the traing n times
     for i in range(0, n):
         # Forward propagation
-        A, Z = forward_prop(W, b, L, train_imgs.reshape(m, -1).T)
+        A, Z = forward_prop(W, b, L, processed_train_imgs)
         # BCE loss calculation
         loss = bce_loss(A[L], train_labels.reshape(1, m))
         # Backward propagation
@@ -79,20 +94,21 @@ def multilayers_NN(L, L_structure, n, learning_rate, train_imgs, train_labels, v
     print("Finished training")
 
     # Check the accuracy of the model
-    T = train_imgs.shape[0]
-    tmp, rand = forward_prop(W, b, L, train_imgs.reshape(T, -1).T)
-    res = np.where(tmp[L] > 0.5, 1, 0) - train_labels.reshape(1, T)
-    percent = np.count_nonzero(res == 0) / T * 100
+    tmp, rand = forward_prop(W, b, L, processed_train_imgs)
+    res = np.where(tmp[L] > 0.5, 1, 0) - train_labels.reshape(1, m)
+    percent = np.count_nonzero(res == 0) / m * 100
     print(f"Accuracy for training set: {percent}")
 
-    M = valid_imgs.shape[0]
-    tmp, rand = forward_prop(W, b, L, valid_imgs.reshape(M, -1).T)
+    M = processed_valid_imgs.shape[1]
+    tmp, rand = forward_prop(W, b, L, processed_valid_imgs)
     res = np.where(tmp[L] > 0.5, 1, 0) - valid_labels.reshape(1, M)
     percent = np.count_nonzero(res == 0) / M * 100
     print(f"Accuracy for dev set: {percent}")
+    #print(bce_loss(tmp[L], valid_labels.reshape(1, M)))
+    #print(processed_valid_imgs)
 
 
-def random_initialize(L, L_structure):
+def he_initialize(L, L_structure):
     W = [None, ]
     b = [None, ]
     # L_structure: an array of number of nodes in each layer from 0 to L - 1
@@ -113,11 +129,14 @@ def random_initialize(L, L_structure):
 # def relu_derivative(X):
     # return np.where(X > 0, 1, 0)
 
+
 def leaky_relu(x):
-    return np.where(x > 0, x, 0.01*x)
+    return np.where(x > 0, x, 0.01 * x)
+
 
 def leaky_relu_derivative(x):
     return np.where(x > 0, 1, 0.01)
+
 
 def sigmoid(X):
     return 1 / (1 +  np.exp(-X))
@@ -176,7 +195,7 @@ def update(L, W, b, d, learning_rate):
 
 def main():
     n0, a, b, c, d = retrieve_data()
-    NN = multilayers_NN(5, (n0, 64, 32, 16, 8, 1), 100, 0.0002, a, b, c, d)
+    NN = multilayers_NN(5, (n0, 64, 32, 16, 8, 1), 50, 0.001, a, b, c, d)
 
 
 main()
