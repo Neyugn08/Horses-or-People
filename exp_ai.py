@@ -3,15 +3,19 @@ import numpy as np
 import cv2
 
 
-def normalize_inputs(inputs):
+def normalize_inputs(inputs, mean, sd):
     m = inputs.shape[0]
     inputs = inputs.reshape(m, -1)
     # inputs now have size (m, number of features)
-    mean_inputs = 1 / m * np.sum(inputs, axis = 0, keepdims = True)
-    inputs = inputs - mean_inputs
-    sd_inputs = 1e-7 + np.sqrt(1 / m * np.sum(inputs * inputs, axis = 0, keepdims = True))
-    inputs = inputs / sd_inputs
-    return inputs.T
+    if mean is None and sd is None:
+        mean_inputs = 1 / m * np.sum(inputs, axis = 0, keepdims = True)
+        inputs = inputs - mean_inputs
+        sd_inputs = 1e-7 + np.sqrt(1 / m * np.sum(inputs * inputs, axis = 0, keepdims = True))
+        inputs = inputs / sd_inputs
+        return inputs.T, mean_inputs, sd_inputs
+    else:
+        inputs = (inputs - mean) / sd
+        return inputs.T
 
 
 def retrieve_data():
@@ -60,8 +64,8 @@ def retrieve_data():
     n0 = training_imgs.reshape(m, -1).shape[1]
 
     # normalising inputs
-    processed_training_imgs = normalize_inputs(training_imgs)
-    processed_validation_imgs = normalize_inputs(validation_imgs)
+    processed_training_imgs, mean, sd = normalize_inputs(training_imgs, None, None)
+    processed_validation_imgs = normalize_inputs(validation_imgs, mean, sd)
     print("Finished uploading")
 
     return n0, processed_training_imgs, training_labels, processed_validation_imgs, validation_labels     
@@ -104,8 +108,6 @@ def multilayers_NN(L, L_structure, n, learning_rate, processed_train_imgs, train
     res = np.where(tmp[L] > 0.5, 1, 0) - valid_labels.reshape(1, M)
     percent = np.count_nonzero(res == 0) / M * 100
     print(f"Accuracy for dev set: {percent}")
-    #print(bce_loss(tmp[L], valid_labels.reshape(1, M)))
-    #print(processed_valid_imgs)
 
 
 def he_initialize(L, L_structure):
@@ -149,7 +151,8 @@ def sigmoid_derivative(X):
 def bce_loss(predicted_values, true_values):
     # both inputs have size (1, m)
     m = predicted_values.shape[1]
-    return - 1 / m * (np.dot(true_values, np.log(predicted_values.reshape(m, 1))) + np.dot((1 - true_values), np.log(1 - predicted_values.reshape(m, 1))))
+    return - 1 / m * np.sum((true_values * np.log(predicted_values) + (1 - true_values) * np.log(1 - predicted_values)), axis = 1)
+
 
 def forward_prop(W, b, L, input):
     # input has this shape: (n0, m)
