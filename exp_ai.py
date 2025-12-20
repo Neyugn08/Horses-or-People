@@ -71,7 +71,7 @@ def retrieve_data():
     return n0, processed_training_imgs, training_labels, processed_validation_imgs, validation_labels     
 
 
-def multilayers_NN(L, L_structure, n, learning_rate, processed_train_imgs, train_labels, processed_valid_imgs, valid_labels):
+def multilayers_NN(L, L_structure, n, learning_rate, processed_train_imgs, train_labels, processed_valid_imgs, valid_labels, lambd):
     m = processed_train_imgs.shape[1]
     # Initialise weights and biases
     W, b = he_initialize(L, L_structure)
@@ -80,9 +80,9 @@ def multilayers_NN(L, L_structure, n, learning_rate, processed_train_imgs, train
         # Forward propagation
         A, Z = forward_prop(W, b, L, processed_train_imgs)
         # BCE loss calculation
-        loss = bce_loss(A[L], train_labels.reshape(1, m))
+        loss = bce_loss(A[L], train_labels.reshape(1, m), W, L, lambd)
         # Backward propagation
-        d = back_prop(L, W, Z, A, train_labels.reshape(1, m))
+        d = back_prop(L, W, Z, A, train_labels.reshape(1, m), lambd)
         # Update weights and biases
         W, b = update(L, W, b, d, learning_rate)
         tmp = None
@@ -115,7 +115,7 @@ def he_initialize(L, L_structure):
     b = [None, ]
     # L_structure: an array of number of nodes in each layer from 0 to L - 1
     for i in range(1, L + 1):
-        # Wi = np.random.randn(L_structure[i], L_structure[i - 1]) * 0.01
+        # Random initialisation: Wi = np.random.randn(L_structure[i], L_structure[i - 1]) * 0.01
         # He initialisation
         Wi = np.random.randn(L_structure[i], L_structure[i - 1]) * np.sqrt(2 / L_structure[i - 1])
         W.append(Wi)
@@ -148,10 +148,14 @@ def sigmoid_derivative(X):
     return sigmoid(X) * (1 - sigmoid(X))
 
 
-def bce_loss(predicted_values, true_values):
+def bce_loss(predicted_values, true_values, W, L, lambd):
     # both inputs have size (1, m)
     m = predicted_values.shape[1]
-    return - 1 / m * np.sum((true_values * np.log(predicted_values) + (1 - true_values) * np.log(1 - predicted_values)), axis = 1)
+    # with L2 regularization
+    W_square_sum = 0
+    for i in range(1, L + 1):
+        W_square_sum += np.sum(np.square(W[i]))
+    return - 1 / m * np.sum((true_values * np.log(predicted_values) + (1 - true_values) * np.log(1 - predicted_values)), axis = 1) + lambd / (2 * m) * W_square_sum
 
 
 def forward_prop(W, b, L, input):
@@ -171,19 +175,19 @@ def forward_prop(W, b, L, input):
     return A, Z
 
 
-def back_prop(L, W, Z, A, expected_output):
+def back_prop(L, W, Z, A, expected_output, lambd):
     # expected_output has size: (1, m)
     m = A[L].shape[1]
     d = {}
     # MSE loss: d[f"A{L}"] = A[L] - expected_output; d[f"Z{L}"] = d[f"A{L}"] * sigmoid_derivative(Z[L])
-    # BCE loss:
+    # BCE loss with L2 regularisation:
     d[f"Z{L}"] = A[L] - expected_output
-    d[f"W{L}"] = 1 / m * np.dot(d[f"Z{L}"], A[L - 1].T)
+    d[f"W{L}"] = 1 / m * np.dot(d[f"Z{L}"], A[L - 1].T) + lambd / m * W[L]
     d[f"b{L}"] = 1 / m * np.sum(d[f"Z{L}"], axis=1, keepdims=True)
     d[f"A{L - 1}"] = np.dot(W[L].T, d[f"Z{L}"])
     for i in range(1, L):
         d[f"Z{L - i}"] = d[f"A{L - i}"] * leaky_relu_derivative(Z[L - i])
-        d[f"W{L - i}"] = 1 / m * np.dot(d[f"Z{L - i}"], A[L - i - 1].T)
+        d[f"W{L - i}"] = 1 / m * np.dot(d[f"Z{L - i}"], A[L - i - 1].T) + lambd / m * W[L - i]
         d[f"b{L - i}"] = 1 / m * np.sum(d[f"Z{L - i}"], axis=1, keepdims=True)
         d[f"A{L - i - 1}"] = np.dot(W[L - i].T, d[f"Z{L - i}"])
     return d
@@ -198,7 +202,7 @@ def update(L, W, b, d, learning_rate):
 
 def main():
     n0, a, b, c, d = retrieve_data()
-    NN = multilayers_NN(5, (n0, 64, 32, 16, 8, 1), 50, 0.001, a, b, c, d)
+    NN = multilayers_NN(4, (n0, 64, 32, 16, 1), 50, 0.001, a, b, c, d, 0.5)
 
 
 main()
